@@ -1,107 +1,28 @@
+mod services {
+    pub mod employee_service;
+    pub mod file_service;
+    pub mod id_service;
+    pub mod workhour_service;
+}
+mod models {
+    pub mod models;
+}
+
+use models::models::*;
+use services::file_service::*;
+use services::id_service::*;
+use services::workhour_service::*;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self};
 
-struct NoMode;
-struct EmployeeMode;
-struct WorkHoursMode;
-#[derive(Debug, PartialEq, Eq, PartialOrd)]
-enum Command {
-    Add,
-    Remove,
-    Edit,
-}
-#[derive(Debug, PartialEq, Eq, PartialOrd)]
-struct Employee {
-    department: String,
-    first_name: String,
-    last_name: String,
-    id: u64,
-}
-#[derive(Debug, PartialEq, Eq, PartialOrd)]
-struct EmployeeModeInput {
-    command: Command,
-    employee: Employee,
-}
-#[derive(Debug)]
-struct WorkHoursModeInput {
-    command: Command,
-    workhours: WorkHours,
-}
-#[derive(Debug)]
-struct Input<State = NoMode> {
-    command: Command,
-    body: String,
-    state: std::marker::PhantomData<State>,
-}
-
-#[derive(Debug)]
-struct WorkHours {
-    hours: f64,
-    employee_id: u64,
-}
-
-impl WorkHours {
-    fn new(hours: f64, employee_id: u64) -> Self {
-        WorkHours { hours, employee_id }
-    }
-    fn add_hours(&self, hours: f64) -> f64 {
-        self.hours + hours
-    }
-    fn remove_hours(&self, hours: f64) -> f64 {
-        self.hours - hours
-    }
-    fn get_hours(&self) -> f64 {
-        self.hours
-    }
-}
-
-impl Input<NoMode> {
-    fn employee_mode(command: Command, body: String) -> Input<EmployeeMode> {
-        Input {
-            command: command,
-            body: body,
-            state: std::marker::PhantomData::<EmployeeMode>,
-        }
-    }
-    fn workhours_mode(command: Command, body: String) -> Input<WorkHoursMode> {
-        Input {
-            command: command,
-            body: body,
-            state: std::marker::PhantomData::<WorkHoursMode>,
-        }
-    }
-}
-
-impl Input<WorkHours> {
-    fn make_workhours_input(command: Command, workhours: WorkHours) -> WorkHoursModeInput {
-        WorkHoursModeInput { command, workhours }
-    }
-}
-impl Input<EmployeeMode> {
-    fn make_employee_input(command: Command, employee: Employee) -> EmployeeModeInput {
-        EmployeeModeInput { command, employee }
-    }
-}
-
-impl Employee {
-    fn new(department: String, first_name: String, last_name: String, id: u64) -> Self {
-        Employee {
-            department,
-            first_name,
-            last_name,
-            id,
-        }
-    }
-}
+use crate::services::employee_service::edit_employee;
 
 fn main() {
-    let save_file = "saved_data.txt";
     let mut employee_list: Vec<Employee> = Vec::new();
-    let mut workhours_list: Vec<WorkHours> = Vec::new();
+    let mut workhour_list: Vec<WorkHour> = Vec::new();
 
     employee_list = {
-        match read_file(save_file) {
+        match read_employee_save_file() {
             Ok(contents) => contents,
             Err(_) => {
                 eprintln!("");
@@ -110,11 +31,21 @@ fn main() {
         }
     };
 
-    println!("{:#?}", employee_list);
+    workhour_list = {
+        match read_workhour_save_file() {
+            Ok(contents) => contents,
+            Err(_) => {
+                eprintln!("");
+                workhour_list
+            }
+        }
+    };
 
+    println!("{:#?}", employee_list);
+    println!("{:#?}", workhour_list);
     loop {
         let mut prompt: String = String::new();
-        println!("Select mode which can either be: 'employee or workhours'");
+        println!("Select mode which can either be: 'employee or workhour'");
         //io::stdin() to read line
         io::stdin()
             .read_line(&mut prompt)
@@ -134,9 +65,7 @@ fn main() {
         match prompt_as_vector[0] {
             "employee" => {
                 let mut prompt: String = String::new();
-                println!(
-                    "Add/remove/edit employees with: 'add/remove/edit Department John Doe id'"
-                );
+                println!("from interface: Add/remove/edit employees with: 'add/remove/edit Department John Doe id'");
 
                 //io::stdin() to read line
                 io::stdin()
@@ -182,19 +111,19 @@ fn main() {
                         body_as_vector.get(2).unwrap_or(&"no_last_name").to_string();
 
                     //constructing ID
-                    let id: u64 = {
-                        let mut id: u64 = 0;
-                        // Go over vector prompt and find an integer The last integer is the id
-                        for string in &body_as_vector {
-                            if let Ok(parsed_int) = string.parse::<u64>() {
-                                id = parsed_int;
-                            } else {
-                                id = 0;
-                            }
-                        }
+                    let employee_id = {
+                        let option_id = id_from_prompt(body_as_vector);
+
+                        let id = if let Some(id) = option_id {
+                            id
+                        } else {
+                            println!("Error in employee id");
+                            continue;
+                        };
                         id
                     };
-                    Employee::new(department, first_name, last_name, id)
+
+                    Employee::new(department, first_name, last_name, employee_id)
                 };
 
                 //Create employee_mode_input
@@ -206,8 +135,10 @@ fn main() {
                 //***************************
                 match &employee_mode_input.command {
                     Command::Add => {
-                        employee_mode_input.employee.id =
-                            check_id_availability(employee_mode_input.employee.id, &employee_list);
+                        employee_mode_input.employee.id = check_id_availability(
+                            employee_mode_input.employee.id,
+                            employee_list.iter().map(|p| p.id).collect(),
+                        );
                         employee_list.push(employee_mode_input.employee);
                     }
                     Command::Remove => {
@@ -221,44 +152,7 @@ fn main() {
                             continue;
                         }
                     }
-                    Command::Edit => {
-                        if let Some(position) = employee_list
-                            .iter()
-                            .position(|x| *x == employee_mode_input.employee)
-                        {
-                            let mut prompt: String = String::new();
-                            println!("{:#?}", &employee_list);
-                            println!("Insert edit: 'Department John Doe'");
-                            //io::stdin() to read line
-                            io::stdin()
-                                .read_line(&mut prompt)
-                                .expect("Failed to read line.");
-                            let prompt_as_vector: Vec<&str> = prompt.split_whitespace().collect();
-                            let department: String = prompt_as_vector
-                                .get(0)
-                                .unwrap_or(&"no_department")
-                                .to_string();
-                            let first_name: String = prompt_as_vector
-                                .get(1)
-                                .unwrap_or(&"no_first_name")
-                                .to_string();
-                            let last_name: String = prompt_as_vector
-                                .get(2)
-                                .unwrap_or(&"no_last_name")
-                                .to_string();
-
-                            let edited_employee = Employee::new(
-                                department,
-                                first_name,
-                                last_name,
-                                employee_mode_input.employee.id,
-                            );
-                            employee_list.remove(position);
-                            employee_list.push(edited_employee);
-                        } else {
-                            println!("Failed to edit a nonexistent entity!");
-                        }
-                    }
+                    Command::Edit => edit_employee(&mut employee_list, employee_mode_input),
                     _ => continue,
                 };
 
@@ -271,119 +165,97 @@ fn main() {
                 println!("{:#?}", &employee_list);
                 println!("{:?}", map);
 
-                let mut data_file = File::create("data.txt").expect("Creation failed!");
-                let mut save_file = File::create(save_file).expect("Creation failed!");
-                for employee in &employee_list {
-                    write!(
-                        data_file,
-                        "{} {} works in {} and their id is {} \r",
-                        &employee.first_name,
-                        &employee.last_name,
-                        &employee.department,
-                        &employee.id
-                    )
-                    .expect("Failed to write!");
-                    write!(
-                        save_file,
-                        "{},{},{},{} \r",
-                        &employee.first_name,
-                        &employee.last_name,
-                        &employee.department,
-                        &employee.id
-                    )
-                    .expect("Failed to write!");
-                }
+                write_employee_files(&employee_list)
             }
-            "workhours" => {
-                let mut prompt: String = String::new();
-                println!("Add/remove/edit workhours with: 'add/remove/edit employee_id hours'");
-                io::stdin()
-                    .read_line(&mut prompt)
-                    .expect("Failed to read line");
-                let prompt: String = match prompt.to_lowercase().trim().parse() {
-                    Ok(string) => string,
-                    Err(_) => continue,
-                };
+            "workhour" => {
+                let prompt: String = workhour_query_main();
+
                 let prompt_as_vector: Vec<&str> = prompt.split_whitespace().collect();
+
                 let command: Command = match prompt_as_vector[0] {
                     "add" => Command::Add,
                     "remove" => Command::Remove,
                     "edit" => Command::Edit,
                     _ => continue,
                 };
-                let input = Input::workhours_mode(command, prompt_as_vector[1..].join(" "));
 
-                let workhours: WorkHours = {
-                    let body_as_vector: Vec<&str> = input.body.split(" ").collect();
-                    let hours: f64 = {
-                        let mut hours: f64 = 0.0;
-                        // Go over vector prompt and find an integer The last integer is the hours
-                        if let Ok(parsed_float) =
-                            body_as_vector.get(0).unwrap_or(&"0.0").parse::<f64>()
-                        {
-                            hours = parsed_float
-                        } else {
-                            hours = 0.0
-                        }
-                        hours
+                let input = Input::workhour_mode(command, prompt_as_vector[1..].join(" "));
+
+                let workhour: WorkHour = {
+                    let mut body_as_vector: Vec<&str> = input.body.split(" ").collect();
+
+                    let hours = if let Ok(result) = get_workhour_from_body(&mut body_as_vector) {
+                        result
+                    } else {
+                        println!("Error occurred in adding WorkHour to an employee.");
+                        continue;
                     };
 
-                    let id: u64 = {
-                        let mut id: u64 = 0;
-                        // Go over vector prompt and find an integer The last integer is the id
-                        for string in &body_as_vector {
-                            if let Ok(parsed_int) = string.parse::<u64>() {
-                                id = parsed_int;
-                            } else {
-                                id = 0;
-                            }
-                        }
+                    let id: u64 = pick_next_available_id(&workhour_list);
+
+                    let employee_id = {
+                        let option_id = id_from_prompt(body_as_vector);
+
+                        let id = if let Some(id) = option_id {
+                            id
+                        } else {
+                            println!("Error in employee id");
+                            continue;
+                        };
                         id
                     };
-                    WorkHours::new(hours, id)
-                };
-                let mut workhours_mode_input: WorkHoursModeInput =
-                    Input::make_workhours_input(input.command, workhours);
 
-                // TODO Matching for Workhours
+                    WorkHour::new(hours, id, employee_id)
+                };
+                let workhour_mode_input: WorkHourModeInput =
+                    Input::make_workhour_input(input.command, workhour);
+
+                // TODO Matching for WorkHour
+                match &workhour_mode_input.command {
+                    Command::Add => {
+                        let all_ids: Vec<u64> = employee_list.iter().map(|p| p.id).collect();
+
+                        if all_ids.contains(&workhour_mode_input.workhour.employee_id) {
+                            workhour_list.push(workhour_mode_input.workhour);
+                        } else {
+                            println!("No employee of this ID found!");
+                            continue;
+                        }
+                    }
+                    Command::Remove => {
+                        let mut prompt: String = String::new();
+                        println!("{:#?}", &workhour_list);
+                        println!("What worktime would you like to remove? Give ID.");
+                        //io::stdin() to read line
+                        io::stdin()
+                            .read_line(&mut prompt)
+                            .expect("Failed to read line.");
+                        let prompt_as_vector: Vec<&str> = prompt.split_whitespace().collect();
+
+                        let id: u64 = {
+                            let mut id: u64 = 0;
+                            if let Ok(parsed_int) = prompt_as_vector[0].parse::<u64>() {
+                                id = parsed_int;
+                            } else {
+                                println!("No workhour ID found.");
+                                continue;
+                            }
+                            id
+                        };
+
+                        if let Some(position) = workhour_list.iter().position(|x| x.id == id) {
+                            workhour_list.remove(position);
+                        } else {
+                            println!("WorkHour not found!")
+                        }
+                    }
+                    Command::Edit => continue,
+                    _ => continue,
+                }
+                write_workhour_files(&workhour_list);
             }
             _ => continue,
         };
+        println!("{:#?}", workhour_list);
     }
-}
-
-//Read file
-fn read_file(filename: &str) -> io::Result<Vec<Employee>> {
-    let file = File::open(filename)?;
-    let reader = BufReader::new(file);
-    let mut employee_list: Vec<Employee> = Vec::new();
-
-    for line in reader.lines() {
-        let line = line?;
-        let fields: Vec<&str> = line.split(',').map(|field| field.trim()).collect();
-        if fields.len() >= 2 {
-            let employee = Employee::new(
-                fields[0].to_string(),
-                fields[1].to_string(),
-                fields[2].to_string(),
-                fields[3].parse::<u64>().unwrap_or(0),
-            );
-            employee_list.push(employee);
-        }
-    }
-    Ok(employee_list)
-}
-
-//***************************
-//CONSTRUCTING THE ID
-//***************************
-fn check_id_availability(mut id: u64, employee_list: &Vec<Employee>) -> u64 {
-    let mut all_ids: Vec<u64> = employee_list.iter().map(|p| p.id).collect();
-    //if id already exists in all ids, take the last id from all_ids and add 1.
-    if all_ids.contains(&id) {
-        if let Some(last_id) = all_ids.pop() {
-            id = last_id + 1;
-        }
-    }
-    id
 }
