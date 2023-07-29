@@ -25,6 +25,30 @@ pub fn read_employee_save_file() -> io::Result<Vec<models::Employee>> {
     Ok(employee_list)
 }
 
+
+
+//Save file
+pub fn write_employee_files(employee_list: &Vec<models::Employee>) {
+    let save_file = "employee_save_file";
+    let data_file = "employee_data_file";
+    let mut data_file = File::create(data_file).expect("Creation failed!");
+    let mut save_file = File::create(save_file).expect("Creation failed!");
+    for employee in employee_list {
+        write!(
+            data_file,
+            "{} {} works in {} and their id is {} \r",
+            &employee.first_name, &employee.last_name, &employee.department, &employee.id
+        )
+        .expect("Failed to write!");
+        write!(
+            save_file,
+            "{},{},{},{} \r",
+            &employee.department, &employee.first_name, &employee.last_name, &employee.id
+        )
+        .expect("Failed to write!");
+    }
+}
+
 //Read file
 pub fn read_workhour_save_file() -> io::Result<Vec<models::WorkHour>> {
     let save_file = "workhours_save_file";
@@ -46,33 +70,10 @@ pub fn read_workhour_save_file() -> io::Result<Vec<models::WorkHour>> {
     }
     Ok(workhour_list)
 }
-
-//Save file
-pub fn write_employee_files(employee_list: &Vec<models::Employee>) {
-    let save_file = "workhours_save_file";
-    let data_file = "Workhours_data_file";
-    let mut data_file = File::create(data_file).expect("Creation failed!");
-    let mut save_file = File::create(save_file).expect("Creation failed!");
-    for employee in employee_list {
-        write!(
-            data_file,
-            "{} {} works in {} and their id is {} \r",
-            &employee.first_name, &employee.last_name, &employee.department, &employee.id
-        )
-        .expect("Failed to write!");
-        write!(
-            save_file,
-            "{},{},{},{} \r",
-            &employee.department, &employee.first_name, &employee.last_name, &employee.id
-        )
-        .expect("Failed to write!");
-    }
-}
-
 //Save file
 pub fn write_workhour_files(workhour_list: &Vec<models::WorkHour>) {
     let save_file = "workhours_save_file";
-    let data_file = "Workhours_data_file";
+    let data_file = "workhours_data_file";
     let mut data_file = File::create(data_file).expect("Creation failed!");
     let mut save_file = File::create(save_file).expect("Creation failed!");
     for workhour in workhour_list {
