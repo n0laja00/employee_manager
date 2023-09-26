@@ -7,7 +7,7 @@ pub enum Command {
     Remove,
     Edit,
 }
-#[derive(Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone)]
 pub struct Employee {
     pub department: String,
     pub first_name: String,

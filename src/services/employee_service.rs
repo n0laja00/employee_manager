@@ -1,10 +1,34 @@
-use crate::models::models::Employee;
+use crate::models::models::{Employee, EmployeeModeInput};
 use crate::models::*;
+use crate::services::id_service::*;
 use std::io::{self};
 
-pub fn employee_mode_function() {
-    loop {}
+//Adds employee to vec.
+pub fn add_employee(
+    employee_list: &mut Vec<models::Employee>,
+    employee_mode_input: &mut models::EmployeeModeInput,
+) {
+    employee_mode_input.employee.id = check_id_availability(
+        employee_mode_input.employee.id,
+        employee_list.iter().map(|p| p.id).collect(),
+    );
+    employee_list.push(employee_mode_input.employee.clone());
 }
+
+pub fn remove_employee(
+    employee_list: &mut Vec<models::Employee>,
+    employee_mode_input: models::EmployeeModeInput,
+) {
+    if let Some(position) = employee_list
+        .iter()
+        .position(|x| *x == employee_mode_input.employee)
+    {
+        employee_list.remove(position);
+    } else {
+        println!("Employee not found!");
+    }
+}
+
 pub fn edit_employee(
     employee_list: &mut Vec<models::Employee>,
     employee_mode_input: models::EmployeeModeInput,

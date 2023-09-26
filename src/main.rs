@@ -1,3 +1,5 @@
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+
 mod services {
     pub mod employee_service;
     pub mod file_service;
@@ -9,13 +11,12 @@ mod models {
 }
 
 use models::models::*;
+use services::employee_service::*;
 use services::file_service::*;
 use services::id_service::*;
 use services::workhour_service::*;
 use std::collections::HashMap;
 use std::io::{self};
-
-use crate::services::employee_service::edit_employee;
 
 fn main() {
     let mut employee_list: Vec<Employee> = Vec::new();
@@ -50,6 +51,7 @@ fn main() {
         io::stdin()
             .read_line(&mut prompt)
             .expect("Failed to read line.");
+
         //***************************
         //SANITISE INPUT & PARSE
         //***************************
@@ -57,12 +59,18 @@ fn main() {
             Ok(string) => string,
             Err(_) => continue,
         };
+
+        if prompt.is_empty() {
+            println!("Input can't be empty.");
+            main()
+        }
         //***************************
         //BREAK DOWN INPUT
         //***************************
         let prompt_as_vector: Vec<&str> = prompt.split_whitespace().collect();
 
         match prompt_as_vector[0] {
+            //Initalise employee mode
             "employee" => {
                 let mut prompt: String = String::new();
                 println!("from interface: Add/remove/edit employees with: 'add/remove/edit Department John Doe id'");
@@ -74,11 +82,17 @@ fn main() {
 
                 //***************************
                 //SANITISE INPUT & PARSE
+                //MOVE TO ITS OWN SERVICE
                 //***************************
                 let prompt: String = match prompt.to_lowercase().trim().parse() {
                     Ok(string) => string,
                     Err(_) => continue,
                 };
+
+                if prompt.is_empty() {
+                    println!("Input can't be empty.");
+                    main()
+                }
 
                 //***************************
                 //BREAK DOWN INPUT
@@ -88,15 +102,20 @@ fn main() {
                     "add" => Command::Add,
                     "remove" => Command::Remove,
                     "edit" => Command::Edit,
+                    "quit" => {
+                        println!("Quitting...");
+                        break;
+                    }
                     _ => continue,
                 };
 
+                //Employee mode input mode. We will break down input thusly>
                 let input = Input::employee_mode(command, prompt_as_vector[1..].join(" "));
 
                 //***************************
                 //HANDLING BODY
+                // Creates the employee and checks that all the information is correct information
                 //***************************
-
                 let employee: Employee = {
                     let body_as_vector: Vec<&str> = input.body.split(" ").collect();
                     let department: String = body_as_vector
@@ -122,11 +141,11 @@ fn main() {
                         };
                         id
                     };
-
+                    //Create new employee after breaking down input
                     Employee::new(department, first_name, last_name, employee_id)
                 };
 
-                //Create employee_mode_input
+                //We take the command, and attach it to the newly created employee
                 let mut employee_mode_input: EmployeeModeInput =
                     Input::make_employee_input(input.command, employee);
 
@@ -134,26 +153,9 @@ fn main() {
                 //MATCH ADD || REMOVE || EDIT
                 //***************************
                 match &employee_mode_input.command {
-                    Command::Add => {
-                        employee_mode_input.employee.id = check_id_availability(
-                            employee_mode_input.employee.id,
-                            employee_list.iter().map(|p| p.id).collect(),
-                        );
-                        employee_list.push(employee_mode_input.employee);
-                    }
-                    Command::Remove => {
-                        if let Some(position) = employee_list
-                            .iter()
-                            .position(|x| *x == employee_mode_input.employee)
-                        {
-                            employee_list.remove(position);
-                        } else {
-                            println!("Employee not found!");
-                            continue;
-                        }
-                    }
+                    Command::Add => add_employee(&mut employee_list, &mut employee_mode_input),
+                    Command::Remove => remove_employee(&mut employee_list, employee_mode_input),
                     Command::Edit => edit_employee(&mut employee_list, employee_mode_input),
-                    _ => continue,
                 };
 
                 employee_list.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -170,12 +172,21 @@ fn main() {
             "workhour" => {
                 let prompt: String = workhour_query_main();
 
+                if prompt.is_empty() {
+                    println!("Input can't be empty.");
+                    main()
+                }
+
                 let prompt_as_vector: Vec<&str> = prompt.split_whitespace().collect();
 
                 let command: Command = match prompt_as_vector[0] {
                     "add" => Command::Add,
                     "remove" => Command::Remove,
                     "edit" => Command::Edit,
+                    "quit" => {
+                        println!("Quitting...");
+                        break;
+                    }
                     _ => continue,
                 };
 
@@ -250,12 +261,31 @@ fn main() {
                         }
                     }
                     Command::Edit => continue,
-                    _ => continue,
                 }
                 write_workhour_files(&workhour_list);
+            }
+            "quit" => {
+                println!("Quitting...");
+                break;
             }
             _ => continue,
         };
         println!("{:#?}", workhour_list);
+    }
+    println!("Application has shut down. Press 'r' to restart.");
+    loop {
+        if let Ok(Event::Key(KeyEvent {
+            code,
+            kind: KeyEventKind::Press,
+            ..
+        })) = event::read()
+        {
+            match code {
+                KeyCode::Char('r') => main(),
+                _ => {
+                    println!("Press 'r' to restart the application.")
+                }
+            }
+        }
     }
 }
